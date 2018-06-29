@@ -83,4 +83,4 @@ if [ ! -f /etc/racoon/certs/caCert.pem ]; then
   cp --force /home/* /mnt/
   cp --force /etc/racoon/certs/* /mnt/
 fi
-/usr/sbin/racoon -v -d -F
+exec /usr/sbin/racoon -v -d -F

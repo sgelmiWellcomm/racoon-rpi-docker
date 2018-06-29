@@ -28,6 +28,6 @@ case "$1" in
     # Restart IPsec, some how '$ ipsec rereadall' does not do the job,
     # let's go aggressive
     pgrep -f racoon | xargs kill -9
-		/usr/sbin/racoon -v -d -F
+		exec /usr/sbin/racoon -v -d -F
     ;;
 esac
