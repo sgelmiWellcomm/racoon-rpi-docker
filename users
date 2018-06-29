@@ -15,7 +15,7 @@ case "$1" in
     password=$3
 
     echo "Importing new Config if needed ..."
-    if [ ! -f /mnt/racoon.conf ]; then
+    if [ -f /mnt/racoon.conf ]; then
       cp --force /mnt/racoon.conf /etc/racoon.conf
     fi
 
@@ -37,14 +37,14 @@ case "$1" in
       openssl pkcs12 -inkey ${user}Key.pem -in ${user}Cert.pem -export -passout pass:${password} -out ${user}Cert.p12
     fi
 
-    cp --force caCert.crt /etc/racoon/certs/
-    cp --force serverCert.pem *Cert.pem /etc/racoon/certs/
-    cp --force caKey.pem serverKey.pem /etc/racoon/certs/
+    cp --force /mnt/caCert.pem /etc/racoon/certs/
+    cp --force /mnt/caKey.pem /etc/racoon/certs/
+    cp --force /mnt/serverCert.pem *Cert.pem /etc/racoon/certs/
+    cp --force /mnt/caKey.pem serverKey.pem /etc/racoon/certs/
 
     echo "Done, will restart IPsec and container!"
     # Restart IPsec, some how '$ ipsec rereadall' does not do the job,
     # let's go aggressive
-
-		exec pgrep -f racoon | xargs kill -9 && /usr/sbin/racoon -v -d -F
+    kill -15 1
     ;;
 esac
