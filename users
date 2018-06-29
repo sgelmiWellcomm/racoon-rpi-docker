@@ -6,28 +6,45 @@ case "$1" in
     echo "Exporting existing set of secrets to mounted container volume ..."
     cp --force /etc/racoon/certs/* /mnt/
     cp --force /etc/racoon/psk.txt /mnt/
-    cp --force /etc/racoon/racoon.conf /mnt/
-		cp --force /home/*	/mnt/
+    cp --force /etc/racoon.conf /mnt/
     echo "Done!"
     ;;
   import)
     # Assign variables
     user=$2
+    password=$3
+
+    echo "Importing new Config if needed ..."
+    if [ ! -f /mnt/racoon.conf ]; then
+      cp --force /mnt/racoon.conf /etc/racoon.conf
+    fi
 
     echo "Importing existing set of secrets from mounted container volume ..."
     cd /mnt
+
+		echo "Create user in /etc/passwd"
+    adduser -D -s /sbin/nologin -H $user
+    echo "$user:$password" | chpasswd
+
+    # Check if User Certificate is needed
+    if [ ! -f /mnt/${user}Cert.p12 ] && [ -f /mnt/caCert.pem ] && [ -f /mnt/caKey.pem ]; then
+      # Create key and certificate for user and remove CSR
+      openssl req -nodes -newkey rsa:2048 -keyout ${user}Key.pem -subj "/C=IT/O=HomeVPN/CN=${user}" -out client.csr
+      openssl x509 -req -in client.csr -CA caCert.pem -CAkey caKey.pem -CAcreateserial -out ${user}Cert.pem
+      rm client.csr
+
+      # Create encrypted PKCS#12 archive for user
+      openssl pkcs12 -inkey ${user}Key.pem -in ${user}Cert.pem -export -passout pass:${password} -out ${user}Cert.p12
+    fi
+
     cp --force caCert.crt /etc/racoon/certs/
     cp --force serverCert.pem *Cert.pem /etc/racoon/certs/
     cp --force caKey.pem serverKey.pem /etc/racoon/certs/
 
-		echo "Create user in /etc/passwd"
-    adduser -D -s /bin/false -H $user
-    echo "$user:$pass" | chpasswd
-
     echo "Done, will restart IPsec and container!"
     # Restart IPsec, some how '$ ipsec rereadall' does not do the job,
     # let's go aggressive
-    pgrep -f racoon | xargs kill -9
-		exec /usr/sbin/racoon -v -d -F
+
+		exec pgrep -f racoon | xargs kill -9 && /usr/sbin/racoon -v -d -F
     ;;
 esac
