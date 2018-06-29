@@ -6,16 +6,15 @@ set -e
 
 # Setup NAT forwarding if not already set, see '$ iptables -t nat -L' and
 # https://wiki.strongswan.org/projects/strongswan/wiki/ForwardingAndSplitTunneling
-
 iptables -t nat -A POSTROUTING -j MASQUERADE
 
-#Create folder for Racoon
-mkdir -p /etc/racoon/certs
+if [ ! -f /home/.init ]; then
+  #Create folder for Racoon
+  mkdir -p /etc/racoon/certs
 
-# Assign variables
-user=$2
-password=$3
-if [ ! -f /etc/racoon/certs/caCert.pem ]; then
+  # Assign variables
+  user=$2
+  password=$3
   # CA certificate (Authority)
   openssl req -x509 -nodes \
   -newkey rsa:2048 \
@@ -80,6 +79,9 @@ if [ ! -f /etc/racoon/certs/caCert.pem ]; then
 
   # Make credentials available to mounted host directory
   cp --force /etc/racoon/certs/* /mnt/
+
+  #Create .init file to avoid init script
+  touch /home/.init
 fi
 
 exec /usr/sbin/racoon -v -d -F
