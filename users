@@ -1,0 +1,33 @@
+#!/bin/ash
+# Manage VPN secrets
+
+case "$1" in
+  export)
+    echo "Exporting existing set of secrets to mounted container volume ..."
+    cp --force /etc/racoon/certs/* /mnt/
+    cp --force /etc/racoon/psk.txt /mnt/
+    cp --force /etc/racoon/racoon.conf /mnt/
+		cp --force /home/*	/mnt/
+    echo "Done!"
+    ;;
+  import)
+    # Assign variables
+    user=$2
+
+    echo "Importing existing set of secrets from mounted container volume ..."
+    cd /mnt
+    cp --force caCert.crt /etc/racoon/certs/
+    cp --force serverCert.pem *Cert.pem /etc/racoon/certs/
+    cp --force caKey.pem serverKey.pem /etc/racoon/certs/
+
+		echo "Create user in /etc/passwd"
+    adduser -D -s /bin/false -H $user
+    echo "$user:$pass" | chpasswd
+
+    echo "Done, will restart IPsec and container!"
+    # Restart IPsec, some how '$ ipsec rereadall' does not do the job,
+    # let's go aggressive
+    pgrep -f racoon | xargs kill -9
+		/usr/sbin/racoon -v -d -F
+    ;;
+esac

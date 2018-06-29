@@ -1,0 +1,86 @@
+#!/bin/ash
+# Init script start IPsec
+
+# By failure exit with "1"!
+set -e
+
+# Setup NAT forwarding if not already set, see '$ iptables -t nat -L' and
+# https://wiki.strongswan.org/projects/strongswan/wiki/ForwardingAndSplitTunneling
+
+iptables -t nat -A POSTROUTING -j MASQUERADE
+
+#Create folder for Racoon
+mkdir -p /etc/racoon/certs
+
+# Assign variables
+user=$2
+password=$3
+if [ ! -f /etc/racoon/certs/caCert.pem ]; then
+  # CA certificate (Authority)
+  openssl req -x509 -nodes \
+  -newkey rsa:2048 \
+	-keyout caKey.pem \
+	-sha256 \
+	-days 1024 \
+	-subj "/C=IT/O=HomeVPN/CN=HomeVPN Root CA" \
+	-out caCert.pem
+
+  # VPN server certificate (Gateway)
+  openssl req -nodes \
+  -newkey rsa:2048 \
+	-keyout serverKey.pem \
+	-subj "/C=IT/O=HomeVPN/CN=Home VPN RacoonServer" \
+	-out server.csr
+
+  openssl x509 -req -in server.csr \
+  -CA caCert.pem \
+  -CAkey caKey.pem \
+  -CAcreateserial \
+  -out serverCert.pem
+
+  rm server.csr
+
+  # Assign random password if not set
+  if [ -z $password ]; then
+    # Generate a random password
+    P1=`cat /dev/urandom | tr -cd abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789 | head -c 3`
+    P2=`cat /dev/urandom | tr -cd abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789 | head -c 3`
+    P3=`cat /dev/urandom | tr -cd abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789 | head -c 3`
+    password="$P1$P2$P3"
+    echo "No VPN_PASSWORD set, generated a random one: $password"
+  fi
+
+  if [ -z $user ]; then
+    user="SampleUser"
+    echo "No VPN_USER set, using SampleUser"
+  fi
+
+  echo "$password" > ${user}P12-XAUTH-Password.txt
+
+  # Add XAUTH password to IPsec secrets file for user
+  echo "Create user in /etc/passwd"
+  adduser -D -s /bin/false -H $user
+  echo "$user:$pass" | chpasswd
+
+  # Create key and certificate for user
+
+  openssl req -nodes -newkey rsa:2048 -keyout ${user}Key.pem -subj "/C=IT/O=HomeVPN/CN=${user}" -out client.csr
+  openssl x509 -req -in client.csr -CA caCert.pem -CAkey caKey.pem -CAcreateserial -out ${user}Cert.pem
+
+  rm client.csr
+
+  # Create encrypted PKCS#12 archive for user
+  openssl pkcs12 -inkey ${user}Key.pem -in ${user}Cert.pem -export -passout pass:${password} -out ${user}Cert.p12
+
+  # Move secrets to respective directories
+  mv ${user}Cert.p12 /home
+  mv ${user}P12-XAUTH-Password.txt /home
+  mv caCert.pem /etc/racoon/certs
+  mv serverCert.pem /etc/racoon/certs/
+  mv caKey.pem serverKey.pem /etc/racoon/certs
+
+  # Make credentials available to mounted host directory
+  cp --force /home/* /mnt/
+  cp --force /etc/racoon/certs/* /mnt/
+fi
+/usr/sbin/racoon -v -d -F
